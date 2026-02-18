@@ -1,0 +1,105 @@
+{
+    "1": {
+        "category": "extraction",
+        "function": "infer_nuclei_fromlabel",
+        "parameter_values": {
+            "fill_filter_method": "3D",
+            "gauss_sigma": 1.34,
+            "max_hole_width": 20,
+            "median_size": 2,
+            "min_hole_width": 0,
+            "nuc_ch": 2,
+            "small_obj_width": 20,
+            "thresh_factor": 0.9,
+            "thresh_max": 1.0,
+            "thresh_min": 0.07
+        },
+        "parent": 0
+    },
+    "2": {
+        "category": "extraction",
+        "function": "make_aggregate",
+        "parameter_values": {
+            "rescale": true,
+            "weight_ch0": 3,
+            "weight_ch1": 2,
+            "weight_ch2": 1,
+            "weight_ch3": 0,
+            "weight_ch4": 0,
+            "weight_ch5": 0,
+            "weight_ch6": 0,
+            "weight_ch7": 0,
+            "weight_ch8": 0,
+            "weight_ch9": 0
+        },
+        "parent": 0
+    },
+    "3": {
+        "category": "preprocessing",
+        "function": "scale_and_smooth",
+        "parameter_values": {
+            "gauss_sigma": 1.34,
+            "median_size": 3
+        },
+        "parent": 2
+    },
+    "4": {
+        "category": "preprocessing",
+        "function": "non_linear_cellmask_transform",
+        "parent": 3
+    },
+    "5": {
+        "category": "core",
+        "function": "masked_object_thresh",
+        "parameter_values": {
+            "cutoff_size": 150,
+            "global_method": "median",
+            "local_adjust": 0.3
+        },
+        "parent": 4
+    },
+    "6": {
+        "category": "postprocessing",
+        "function": "fill_and_filter_linear_size",
+        "parameter_values": {
+            "hole_max": 50,
+            "hole_min": 0,
+            "method": "slice_by_slice",
+            "min_size": 45
+        },
+        "parent": 5
+    },
+    "7": {
+        "category": "postpostprocessing",
+        "function": "choose_max_label_cellmask_union_nucleus",
+        "parameter_values": {
+            "interior_labels_only": false,
+            "watershed_method": "3D"
+        },
+        "parent": [
+            3,
+            6,
+            1
+        ]
+    },
+    "8": {
+        "category": "postpostprocessing",
+        "function": "infer_cytoplasm",
+        "parameter_values": {
+            "erode_nuclei": false
+        },
+        "parent": [
+            1,
+            7
+        ]
+    },
+    "9": {
+        "category": "export",
+        "function": "stack_masks",
+        "parent": [
+            1,
+            7,
+            8
+        ]
+    }
+}
