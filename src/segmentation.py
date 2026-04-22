@@ -1,6 +1,8 @@
 import numpy as np
+import pandas as pd
+from skimage.measure import regionprops_table
 from scipy import ndimage
-from skimage.morphology import opening
+from skimage.morphology import opening, binary_erosion
 from skimage.filters import threshold_otsu
 from skimage.segmentation import watershed
 from skimage.measure import label
@@ -15,6 +17,7 @@ import time
 from typing import Union, List
 from pathlib import Path
 from infer_subc.core.file_io import (list_image_files, read_czi_image, export_inferred_organelle)
+from infer_subc.core.img import *
 
 from bioio import BioImage
 
@@ -23,6 +26,69 @@ from napari.settings import get_settings
 settings = get_settings()
 settings.application.ipy_interactive = True
 
+#############################
+## FUNCTIONS FOR NUC/CELL SEG
+#############################
+def filter_nuc_by_intensity(nuclei_labels_dc: np.ndarray, 
+                            raw_nuclei: np.ndarray, 
+                            intensity_threshold: Union[int, float]) -> np.ndarray:
+    """
+    Filter nuclei objects based on their mean intensity values.
+    
+    Parameters:
+    ----------
+    nuclei_labels_dc: np.ndarray
+        3D array of instance-segmented nuclei labels after declumping.
+    raw_nuclei: np.ndarray
+        3D array of the raw nuclei channel image.
+    intensity_threshold: int or float
+        Threshold value for mean intensity; nuclei objects with mean intensity above this value will be removed.
+    
+    Returns:
+    -------
+    np.ndarray
+        3D array of instance-segmented nuclei labels after filtering out objects with mean intensity above the specified threshold.
+    """
+    # measure average intensity value in each nucleus object
+    nuc_intensity_df = pd.DataFrame(regionprops_table(nuclei_labels_dc, 
+                                         raw_nuclei, 
+                                         properties=["label", "mean_intensity"]))
+    
+    nuc_to_remove = nuc_intensity_df[nuc_intensity_df["mean_intensity"] > intensity_threshold]["label"].tolist()
+    nuclei_labels_filtered = np.copy(nuclei_labels_dc)
+    for nuc in nuc_to_remove:
+        nuclei_labels_filtered[nuclei_labels_dc == nuc] = 0
+
+    return nuclei_labels_filtered
+
+# NOT CURRENTLY BEING USED
+def infer_cytoplasm(nuclei_object, cellmask,  erode_nuclei = True):
+    """
+    Procedure to infer cytoplasm from linearly unmixed input.
+
+    Parameters
+    ------------
+    nuclei_object: 
+        a 3d image containing the nuclei signal
+    cellmask: 
+        a 3d image containing the cellmask signal
+    erode_nuclei: 
+        should we erode? Default False
+
+    Returns
+    -------------
+    cytoplasm_mask 
+        boolean np.ndarray
+      
+    """
+    nucleus_obj =  apply_mask(nuclei_object, cellmask) 
+
+    if erode_nuclei:
+        cytoplasm_mask = np.logical_xor(cellmask, binary_erosion(nucleus_obj))
+    else:
+        cytoplasm_mask = np.logical_xor(cellmask, nucleus_obj)
+
+    return label_bool_as_uint16(cytoplasm_mask)
 
 ############################
 ## FUNCTIONS FOR DECLUMPING
@@ -308,6 +374,59 @@ def batch_process_segmentation(raw_path: Union[Path,str],
 #####################################
 ## FOR QUALITY CHECKING SEGMENTATIONS
 #####################################
+def QC_filter(in_img: np.ndarray,
+              raw_img: np.ndarray,
+              method: Union[int, str, None]):
+    """
+    Filter the input image based on the specified method.
+    
+    Parameters:
+    ----------
+
+    in_img : np.ndarray
+        The input image to be filtered.
+    raw_img : np.ndarray
+        The raw input image.
+    method : Union[int, str, None]
+        The filtering method to apply.
+    
+    Returns:
+    -------
+    np.ndarray
+        The filtered output image.
+    """
+    out_img = np.zeros_like(in_img, dtype=np.uint16)
+    if (type(method) is int) and (method > 0):
+        # when we have multicellular images, this can be used to filter by size
+        # print("Applying size filter with linear size...")
+        # out_img = size_filter_linear_size(in_img, min_size=method, method='3D') #simple size filtering
+        print("incorrect setting")
+    elif type(method) is str:
+        if method.isdigit():
+            # when we have multicellular images, this can be used to filter by size
+            # print("Applying size filter with linear size...")
+            # out_img = size_filter_linear_size(in_img, min_size=int(method), method='3D')
+            print("incorrect setting")
+        elif method.lower() == 'largest':
+            print("Applying the largest object filter...")
+            counts_per_label = np.bincount(label(in_img)[label(in_img)!=0])
+            out_img[label(in_img) == np.argmax(counts_per_label)] = 1
+        elif method.lower() == 'brightest':
+            print("Applying the brightest object filter...")
+            composite = apply_mask(min_max_intensity_normalization(raw_img).sum(axis=0), in_img)
+            intensity_per_label = [composite[label(in_img) == i].sum()/(label(in_img) == i).sum() for i in np.unique(label(in_img))]
+            out_img[label(in_img) == (np.argmax(intensity_per_label[1:])+1)] = 1 
+        elif method.lower() == 'er':
+            out_img = in_img.copy()
+            out_img[out_img>0] = 1
+        elif method.lower() == 'none':
+            print("No filtering applied.")
+            out_img = in_img # option to not apply any filtering given user error
+    elif method == None or method == 0:
+        print("No filtering applied.")
+        out_img = in_img # no filtering is applied
+    return out_img
+
 def filter_segmentation(suffix, filt, edited, raw, status="Fail"):
     """
     This function applies filters to the object segmentations to ensure they meet criteria to run the quantification.
