@@ -21,6 +21,7 @@ from infer_subc.core.img import *
 from infer_subc.organelles.cellmask import non_linear_cellmask_transform
 
 from bioio import BioImage
+import tifffile
 
 import napari
 from napari.settings import get_settings
@@ -701,17 +702,30 @@ def batch_process_segmentation(raw_path: Union[Path,str],
         # read in raw file and metadata
         raw_file = BioImage(img)
         img_data = np.squeeze(raw_file.data) # np.squeeze removes single-dimensional entries from the shape of an array
-        meta_dict = {"file_name": img}
+        # extra metadata information
+        dimensions = raw_file.standard_metadata.dimensions_present
+        dim_size = {"Z": raw_file.physical_pixel_sizes.Z, 
+                    "Y": raw_file.physical_pixel_sizes.Y, 
+                    "X": raw_file.physical_pixel_sizes.X}
+        # select the scale values from the dim_size dict in the order in which X, Y, and Z appear in the dimensions string
+        scale_order = [dim for dim in str(dimensions) if dim in ['Z','Y','X']]
+        scale = tuple([dim_size[dim] for dim in scale_order])
+
+        meta_dict = {'processing': "Golgi segmentation from https://github.com/shanrhoads/PNN-morpho-quant", 
+                    'file_name': (str(img)), 
+                    'scale': scale}
 
         # run masks function
         if masks_settings:
             masks = infer_masks(img_data, *masks_settings)
-            export_inferred_organelle(masks, name_suffix+"masks", meta_dict, seg_path)
+            tifffile.imwrite(seg_path/f"{img.stem}-{name_suffix}masks.tiff", masks.astype(np.uint16), metadata=meta_dict)
+            # export_inferred_organelle(masks, name_suffix+"masks", meta_dict, seg_path)
             seg_list.append("masks")
 
         if golgi_settings:
             golgi_seg = infer_golgi(img_data, *golgi_settings)
-            export_inferred_organelle(golgi_seg, name_suffix+"golgi", meta_dict, seg_path)  
+            tifffile.imwrite(seg_path/f"{img.stem}-{name_suffix}golgi.tiff", golgi_seg.astype(np.uint16), metadata=meta_dict)
+            # export_inferred_organelle(golgi_seg, name_suffix+"golgi", meta_dict, seg_path)  
             seg_list.append("golgi")
 
         end = time.time()
