@@ -4,9 +4,13 @@ Quantitative assessment of fluorescent protein localization to the Golgi in conf
 ## **Computer setup (only do these things once per computer)**
 To begin using the analysis included in the package, you will need to install the following Python packages. It's recommended to do so using a Python environment manager, like Anaconda. See how below:
 
-**Anaconda install:**
-1. Download Anaconda from this site: https://www.anaconda.com/download
-2. **IMPROTANT for Windows computers:** during the install check the box that adds conda to the Windows PATH variable. This is not "recommended", but is essential for success!! Do not skip this!!!
+**Anaconda and Git install:**
+1. Download Anaconda from this site: https://www.anaconda.com/download. Run the installer.
+    
+    **IMPROTANT for Windows computers:** during the install check the box that adds the installation to the Windows PATH variable. This is not "recommended", but is essential for success!! Do not skip this!!!
+2. **If you have never used Git before on your computer:** download Git from this site: git-scm.com. Run the installer.
+    
+    **IMPROTANT for Windows computers:** Select "Use Git and optional UNIX tolls from the Command Prompt" to ensure that Git gets added to path.
 
 **Setting up a conda environment:**
 1. Open Command Prompt, or your terminal of choice.
