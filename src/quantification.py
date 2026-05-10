@@ -16,9 +16,172 @@ import itertools
 
 from bioio import BioImage
 
+from skimage.measure import manders_coloc_coeff, regionprops_table
+
 ##################################################################
 ### FOR PROCESSING INENSITY VALUES WHEN THERE ARE NOT CELL/NUCLEUS MASKS####
 ##################################################################
+# NEW - intensity measures + colocalization measures
+def batch_intensity_coloc_quant(out_file_name: str,
+                                  seg_path: Union[Path,str],
+                                  out_path: Union[Path, str], 
+                                  raw_path: Union[Path,str], 
+                                  raw_file_type: str,
+                                  raw_chan_axis:int,
+                                  raw_Z_axis:int,
+                                  raw_Y_axis:int,
+                                  raw_X_axis:int,
+                                  organelle_names: List[str],
+                                  proteins_of_interest: Union[List[str], None],
+                                  channel_dict: Dict[int, str],
+                                  seg_suffix:Union[str, None]=None):
+    """  
+    Batch-quantifies the total fluorescence intensity of each specified channel within one or more segmented organelle masks and across the whole image for all raw image files in a given directory, then calculates the fraction of each channel's signal that falls within each organelle mask.
+
+    Parameters:
+    ----------
+    out_file_name: str
+        the prefix to use when naming the output datatables
+    seg_path: Union[Path,str]
+        Path or str to the folder that contains the segmentation tiff files
+    out_path: Union[Path, str]
+        Path or str to the folder that the output datatables will be saved to
+    raw_path: Union[Path,str]
+        Path or str to the folder that contains the raw image files
+    raw_file_type: str
+        the file type of the raw data; ex - ".tiff", ".czi"
+    organelle_names: List[str]
+        A list of the organelles that will be used for intensity measurements (portion of intensity in image that exists inside each organelle) and colocalization analysis
+        
+        Organelle names listed here should have a corresponding segmentation image (i.e., if "golgi" is listed here, there should be a segmentation file with the suffix 
+        "-golgi.tiff")
+    proteins_of_interest: Union[List[str], None]
+        A list of the proteins that will be used for colocalization analysis; the manders colocalization coefficient will be calculated for these proteins within each organelle 
+        
+        Protein names listed here should have a corresponding entry in the channel_dict and segmentation image (i.e., if "proteinA" is listed here, there 
+        should be a channel_dict entry like {0: "proteinA"} and a segmentation file with the suffix "-proteinA.tiff")
+    channel_dict: Dict[int, str]
+        a dictionary mapping channel indices (keys) to their names (values) in the raw image. Only channels specified in this dictionary will be used for intensity measurements. 
+        They will be identified as the associated keys in the output datatables.
+    seg_suffix:Union[str, None]=None
+        any additional text that is included in the segmentation tiff files between the file stem and the segmentation suffix; this was specified during batch 
+        processing, if it was used. If not used, indicate None.
+
+
+    Measurements collected:
+    -----------------------
+    One row per image. Columns are generated dynamically from channel_dict and organelle_names:
+
+    - {ch_name}-ch_intensity-sum_in-whole-image : sum of all pixel intensities in the {ch_name} channel across the entire image
+    - {ch_name}-ch_intensity-sum_in-{org_name}  : sum of all pixel intensities in the {ch_name} channel within voxels where the {org_name} segmentation mask is nonzero
+    - portion-{ch_name}-ch-intensity_in-{org_name} : fraction of the total channel intensity that falls within the organelle mask ({org_name} sum / whole-image sum)
+    - manders-{protein_name}_in-{org_name} : the Manders colocalization coefficient for the {protein} channel within the {org_name} organelle mask
+    
+        Calculated as:
+        (sum of intensity values for the protein of interest channel inside the organelle mask) / (sum of intensity values for the protein of interest channel in the whole image)
+        
+        **IMPORANTLY:** Intensity values that are outside of the protein segmentation are exclused from this calculation.
+
+        Values can be between 0 and 1, where higher values indicate a greater fraction of the protein of interest channel's signal is colocalized within the organelle mask.
+        For example, a value of 0.8 for manders-proteinA_in-golgi would indicate that 80% of the total intensity for proteinA across the whole image is colocalized within the Golgi mask.
+    - volume-fraction-{protein_name}_in-{org_name} : the fraction of the protein mask volume that is within the organelle mask; 
+    
+        Calculated as: (number protein segmentation voxels inside the organelle mask) / (number of voxels in the protein segmentation)
+        
+    Returns:
+    ----------
+    final_quant: pd.DataFrame
+        the quantification results for all images
+    
+    The output datatable is saved to out_path.
+    """
+    start = time.time()
+
+    raw_path = Path(raw_path)
+    seg_path = Path(seg_path)
+    out_path = Path(out_path)
+
+    out_path.mkdir(parents=True, exist_ok=True)
+
+    quant_csv_path = out_path / f"{out_file_name}-intensity_quantification.csv"
+    if quant_csv_path.exists():
+        raise FileExistsError(f"{quant_csv_path} already exists! Please change the out_file_name or delete the existing file to avoid overwriting.")
+
+    proteins = proteins_of_interest if proteins_of_interest is not None else []
+    channel_names = set(channel_dict.values())
+    for protein in proteins:
+        if protein not in channel_names:
+            raise ValueError(f"{protein} is listed in proteins_of_interest but is not a value in channel_dict! Please check your inputs.")
+
+    img_file_list = list_image_files(raw_path, raw_file_type)
+    if len(img_file_list) == 0:
+        raise FileNotFoundError(f"No raw files of type {raw_file_type} found in {raw_path}.")
+
+    transpose_order = (raw_chan_axis, raw_Z_axis, raw_Y_axis, raw_X_axis)
+    needs_transpose = transpose_order != (0, 1, 2, 3)
+    resolved_seg_suffix = "-" if seg_suffix is None else seg_suffix
+    segs_to_collect = organelle_names + proteins
+
+    result_rows = []
+
+    for count, img_f in enumerate(img_file_list, start=1):
+        print(f"Processing image {img_f.stem}...")
+
+        filez = find_segmentation_tiff_files(img_f, segs_to_collect, seg_path, resolved_seg_suffix)
+
+        raw_file = BioImage(img_f)
+        img_data = np.squeeze(raw_file.data)
+        if needs_transpose:
+            img_data = np.transpose(img_data, transpose_order)
+
+        intensities = {name: img_data[ch].astype(float) for ch, name in channel_dict.items()}
+        organelle_masks = {org_name: (read_tiff_image(filez[org_name]) > 0) for org_name in organelle_names}
+        protein_masks = {protein: (read_tiff_image(filez[protein]) > 0) for protein in proteins}
+
+        row = {"file_name": img_f.stem}
+
+        # Whole-image and organelle-restricted intensity sums
+        for ch_name, raw_int_ch in intensities.items():
+            whole_sum = raw_int_ch.sum()
+            row[f"{ch_name}-ch_intensity-sum_in-whole-image"] = whole_sum
+            for org_name, org_mask in organelle_masks.items():
+                row[f"{ch_name}-ch_intensity-sum_in-{org_name}"] = (raw_int_ch * org_mask).sum()
+
+        # Channel intensity portion inside each organelle
+        for ch_name in channel_dict.values():
+            whole_key = f"{ch_name}-ch_intensity-sum_in-whole-image"
+            whole_val = row[whole_key]
+            for org_name in organelle_names:
+                org_key = f"{ch_name}-ch_intensity-sum_in-{org_name}"
+                if whole_val == 0:
+                    row[f"portion-{ch_name}-ch-intensity_in-{org_name}"] = np.nan
+                else:
+                    row[f"portion-{ch_name}-ch-intensity_in-{org_name}"] = row[org_key] / whole_val
+
+        # Colocalization and protein volume fractions per protein/organelle
+        for protein_name, protein_mask in protein_masks.items():
+            protein_voxel_count = protein_mask.sum()
+            for org_name, org_mask in organelle_masks.items():
+                row[f"manders-{protein_name}_in-{org_name}"] = manders_coloc_coeff(intensities[protein_name], org_mask, protein_mask)
+                if protein_voxel_count == 0:
+                    row[f"volume-fraction-{protein_name}_in-{org_name}"] = np.nan
+                else:
+                    row[f"volume-fraction-{protein_name}_in-{org_name}"] = float((protein_mask & org_mask).sum()) / float(protein_voxel_count)
+
+        result_rows.append(row)
+        print(f"Completed processing for {count} images in {(time.time()-start)/60} mins.")
+
+    final_quant = pd.DataFrame(result_rows).set_index("file_name")
+    final_quant.to_csv(quant_csv_path)
+
+    end = time.time()
+    print(f"Quantification for {len(img_file_list)} files is COMPLETE! Files saved to '{out_path}'.")
+    print(f"It took {(end - start)/60} minutes to quantify these files.")
+    return final_quant
+
+
+
+# OLD - intensity measures only
 def batch_process_intensity_quant(out_file_name: str,
                                   seg_path: Union[Path,str],
                                   out_path: Union[Path, str], 
@@ -130,13 +293,13 @@ def batch_process_intensity_quant(out_file_name: str,
         ########## MAIN MEASUREMENTS ##########
         per_image_metrics["object"].append("whole-image")
         for ch, ch_name in channel_dict.items():
-            whole_img_intensity_sum = np.sum(intensities[ch])
+            whole_img_intensity_sum = np.sum(float(intensities[ch])) 
             per_image_metrics[f"{ch_name}-ch_intensity-sum"].append(whole_img_intensity_sum)
 
         for org, org_name in zip(organelles, organelle_names):
             per_image_metrics["object"].append(org_name)
             for ch, ch_name in channel_dict.items():
-                org_intensity_sum = np.sum(intensities[ch][org > 0])
+                org_intensity_sum = np.sum(float(intensities[ch][org > 0]))
                 per_image_metrics[f"{ch_name}-ch_intensity-sum"].append(org_intensity_sum)
 
         per_img_tab = pd.DataFrame(per_image_metrics)
