@@ -653,7 +653,8 @@ def batch_process_segmentation(raw_path: Union[Path,str],
                                seg_path: Union[Path, str],
                                name_suffix: Union[str, None],
                                masks_settings: Union[List, None],
-                               golgi_settings: Union[List, None]):
+                               golgi_settings: Union[List, None],
+                               SLC_settings: Union[List, None]):
     """
     This function batch processes the segmentation workflows for multiple organelles and masks across multiple images.
 
@@ -727,6 +728,12 @@ def batch_process_segmentation(raw_path: Union[Path,str],
             tifffile.imwrite(seg_path/f"{img.stem}-{name_suffix}golgi.tiff", golgi_seg.astype(np.uint16), metadata=meta_dict)
             # export_inferred_organelle(golgi_seg, name_suffix+"golgi", meta_dict, seg_path)  
             seg_list.append("golgi")
+
+        if SLC_settings:
+            SLC_seg = infer_golgi(img_data, *SLC_settings)
+            tifffile.imwrite(seg_path/f"{img.stem}-{name_suffix}SLC.tiff", SLC_seg.astype(np.uint16), metadata=meta_dict)
+            # export_inferred_organelle(SLC_seg, name_suffix+"SLC", meta_dict, seg_path)
+            seg_list.append("SLC")
 
         end = time.time()
         print(f"Processing for {img} completed in {(end - start)/60} minutes.")
