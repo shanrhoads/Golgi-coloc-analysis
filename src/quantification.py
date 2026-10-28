@@ -528,6 +528,7 @@ def make_all_metrics_tables(source_file: str,
                                                                         dist_zernike_degrees=dist_zernike_degrees,
                                                                         dist_center_on=dist_center_on,
                                                                         dist_keep_center_as_bin=dist_keep_center_as_bin)
+                    contact_dist_tab.insert(loc=0,column='cell',value=i)
                     dist_tabs.append(contact_dist_tab)
                 else:
                     contact_tab = get_contact_metrics_3D(a, a_name, 
@@ -803,7 +804,8 @@ def batch_summary_stats(csv_path_list: List[str],
                 region_tabs.append(test_regions)
     
     org_df = pd.concat(org_tabs,axis=0, join='outer')
-    # contacts_df = pd.concat(contact_tabs,axis=0, join='outer')
+    if contact_tabs:
+        contacts_df = pd.concat(contact_tabs,axis=0, join='outer')
     dist_df = pd.concat(dist_tabs,axis=0, join='outer')
     regions_df = pd.concat(region_tabs,axis=0, join='outer')
 
@@ -811,48 +813,49 @@ def batch_summary_stats(csv_path_list: List[str],
     # adding new metrics to the original sheets
     ###################
     # TODO: include these labels when creating the original sheets
-    # contact_cnt = contacts_df[["dataset", "image_name", "object", "label", "volume"]]
-    # contact_cnt[["orgA", "orgB"]] = contact_cnt["object"].str.split('X', expand=True)
-    # contact_cnt[["A_ID", "B_ID"]] = contact_cnt["label"].str.split('_', expand=True)
-    # contact_cnt["A"] = contact_cnt["orgA"] +"_" + contact_cnt["A_ID"].astype(str)
-    # contact_cnt["B"] = contact_cnt["orgB"] +"_" + contact_cnt["B_ID"].astype(str)
+    if contact_tabs:
+        contact_cnt = contacts_df[["dataset", "image_name", "object", "label", "volume"]]
+        contact_cnt[["orgA", "orgB"]] = contact_cnt["object"].str.split('X', expand=True)
+        contact_cnt[["A_ID", "B_ID"]] = contact_cnt["label"].str.split('_', expand=True)
+        contact_cnt["A"] = contact_cnt["orgA"] +"_" + contact_cnt["A_ID"].astype(str)
+        contact_cnt["B"] = contact_cnt["orgB"] +"_" + contact_cnt["B_ID"].astype(str)
 
-    # contact_cnt_percell = contact_cnt[["dataset", "image_name", "orgA", "A_ID", "object", "volume"]].groupby(["dataset", "image_name", "orgA", "A_ID", "object"]).agg(["count", "sum"])
-    # contact_cnt_percell.columns = ["_".join(col_name).rstrip('_') for col_name in contact_cnt_percell.columns.to_flat_index()]
-    # unstacked = contact_cnt_percell.unstack(level='object')
-    # unstacked.columns = ["_".join(col_name).rstrip('_') for col_name in unstacked.columns.to_flat_index()]
-    # unstacked = unstacked.reset_index()
-    # for col in unstacked.columns:
-    #     if col.startswith("volume_count_"):
-    #         newname = col.split("_")[-1] + "_count"
-    #         unstacked.rename(columns={col:newname}, inplace=True)
-    #     if col.startswith("volume_sum_"):
-    #         newname = col.split("_")[-1] + "_volume"
-    #         unstacked.rename(columns={col:newname}, inplace=True)
-    # unstacked.rename(columns={"orgA":"object", "A_ID":"label"}, inplace=True)
-    # unstacked.set_index(['dataset', 'image_name', 'object', 'label'])
+        contact_cnt_percell = contact_cnt[["dataset", "image_name", "orgA", "A_ID", "object", "volume"]].groupby(["dataset", "image_name", "orgA", "A_ID", "object"]).agg(["count", "sum"])
+        contact_cnt_percell.columns = ["_".join(col_name).rstrip('_') for col_name in contact_cnt_percell.columns.to_flat_index()]
+        unstacked = contact_cnt_percell.unstack(level='object')
+        unstacked.columns = ["_".join(col_name).rstrip('_') for col_name in unstacked.columns.to_flat_index()]
+        unstacked = unstacked.reset_index()
+        for col in unstacked.columns:
+            if col.startswith("volume_count_"):
+                newname = col.split("_")[-1] + "_count"
+                unstacked.rename(columns={col:newname}, inplace=True)
+            if col.startswith("volume_sum_"):
+                newname = col.split("_")[-1] + "_volume"
+                unstacked.rename(columns={col:newname}, inplace=True)
+        unstacked.rename(columns={"orgA":"object", "A_ID":"label"}, inplace=True)
+        unstacked.set_index(['dataset', 'image_name', 'object', 'label'])
 
-    # contact_percellB = contact_cnt[["dataset", "image_name", "orgB", "B_ID", "object", "volume"]].groupby(["dataset", "image_name", "orgB", "B_ID", "object"]).agg(["count", "sum"])
-    # contact_percellB.columns = ["_".join(col_name).rstrip('_') for col_name in contact_percellB.columns.to_flat_index()]
-    # unstackedB = contact_percellB.unstack(level='object')
-    # unstackedB.columns = ["_".join(col_name).rstrip('_') for col_name in unstackedB.columns.to_flat_index()]
-    # unstackedB = unstackedB.reset_index()
-    # for col in unstackedB.columns:
-    #     if col.startswith("volume_count_"):
-    #         newname = col.split("_")[-1] + "_count"
-    #         unstackedB.rename(columns={col:newname}, inplace=True)
-    #     if col.startswith("volume_sum_"):
-    #         newname = col.split("_")[-1] + "_volume"
-    #         unstackedB.rename(columns={col:newname}, inplace=True)
-    # unstackedB.rename(columns={"orgB":"object", "B_ID":"label"}, inplace=True)
-    # unstackedB.set_index(['dataset', 'image_name', 'object', 'label'])
+        contact_percellB = contact_cnt[["dataset", "image_name", "orgB", "B_ID", "object", "volume"]].groupby(["dataset", "image_name", "orgB", "B_ID", "object"]).agg(["count", "sum"])
+        contact_percellB.columns = ["_".join(col_name).rstrip('_') for col_name in contact_percellB.columns.to_flat_index()]
+        unstackedB = contact_percellB.unstack(level='object')
+        unstackedB.columns = ["_".join(col_name).rstrip('_') for col_name in unstackedB.columns.to_flat_index()]
+        unstackedB = unstackedB.reset_index()
+        for col in unstackedB.columns:
+            if col.startswith("volume_count_"):
+                newname = col.split("_")[-1] + "_count"
+                unstackedB.rename(columns={col:newname}, inplace=True)
+            if col.startswith("volume_sum_"):
+                newname = col.split("_")[-1] + "_volume"
+                unstackedB.rename(columns={col:newname}, inplace=True)
+        unstackedB.rename(columns={"orgB":"object", "B_ID":"label"}, inplace=True)
+        unstackedB.set_index(['dataset', 'image_name', 'object', 'label'])
 
-    # contact_cnt = pd.concat([unstacked, unstackedB], axis=0).sort_index(axis=0)
-    # contact_cnt = contact_cnt.groupby(['dataset', 'image_name', 'object', 'label']).sum().reset_index()
-    # contact_cnt['label']=contact_cnt['label'].astype("Int64")
+        contact_cnt = pd.concat([unstacked, unstackedB], axis=0).sort_index(axis=0)
+        contact_cnt = contact_cnt.groupby(['dataset', 'image_name', 'object', 'label']).sum().reset_index()
+        contact_cnt['label']=contact_cnt['label'].astype("Int64")
 
-    # org_df = pd.merge(org_df, contact_cnt, how='left', on=['dataset', 'image_name', 'object', 'label'], sort=True)
-    # org_df[contact_cnt.columns] = org_df[contact_cnt.columns].fillna(0)
+        org_df = pd.merge(org_df, contact_cnt, how='left', on=['dataset', 'image_name', 'object', 'label'], sort=True)
+        org_df[contact_cnt.columns] = org_df[contact_cnt.columns].fillna(0)
 
     ###################
     # summary stat group
@@ -874,7 +877,15 @@ def batch_summary_stats(csv_path_list: List[str],
         org_cont_tabs.append(shared_metrics)
 
     org_summary = org_cont_tabs[0]
-    # contact_summary = org_cont_tabs[1]
+    if contact_tabs: 
+        for tab in [contacts_df]:
+            tab1 = tab[group_by + ['volume']].groupby(group_by).agg(['count', 'sum'] + ag_func_standard)
+            tab2 = tab[group_by + ['surface_area']].groupby(group_by).agg(['sum'] + ag_func_standard)
+            tab3 = tab[group_by + sharedcolumns].groupby(group_by).agg(ag_func_standard)
+            shared_metrics = pd.merge(tab1, tab2, 'outer', on=group_by)
+            shared_metrics = pd.merge(shared_metrics, tab3, 'outer', on=group_by)
+            org_cont_tabs.append(shared_metrics)
+        contact_summary = org_cont_tabs[1]
 
     ###################
     # group metrics from regions_df similar to the above
@@ -884,9 +895,10 @@ def batch_summary_stats(csv_path_list: List[str],
     ###################
     # summarize extra metrics from org_df
     ###################
-    # columns2 = [col for col in org_df.columns if col.endswith(("_count", "_volume"))]
-    # contact_counts_summary = org_df[group_by + columns2].groupby(group_by).agg(['sum'] + ag_func_standard)
-    # org_summary = pd.merge(org_summary, contact_counts_summary, 'outer', on=group_by)#left_on=group_by, right_on=True)
+    if contact_tabs:
+        columns2 = [col for col in org_df.columns if col.endswith(("_count", "_volume"))]
+        contact_counts_summary = org_df[group_by + columns2].groupby(group_by).agg(['sum'] + ag_func_standard)
+        org_summary = pd.merge(org_summary, contact_counts_summary, 'outer', on=group_by)#left_on=group_by, right_on=True)
 
     ###################
     # summarize distribution measurements
@@ -955,7 +967,10 @@ def batch_summary_stats(csv_path_list: List[str],
     nuc_dist_df = dist_df[["dataset", "image_name", "cell",
                         "XY_bins", "XY_center_vox_cnt_perbin", "XY_mask_vox_cnt_perbin",
                         "XY_wedges", "XY_center_vox_cnt_perwedge", "XY_mask_vox_cnt_perwedge",
-                        "Z_slices", "Z_center_vox_cnt", "Z_mask_vox_cnt"]].set_index(["dataset", "image_name", "cell"])
+                        "Z_slices", "Z_center_vox_cnt", "Z_mask_vox_cnt"]]#.set_index(["dataset", "image_name", "cell"]).first()
+    # keep only the first row for each dataset/image/cell combination
+    nuc_dist_df = nuc_dist_df.groupby(["dataset", "image_name", "cell",]).first()
+
     nuc_hist_dfs = []
     for idx in range(0,len(nuc_dist_df.index)):
         selection = nuc_dist_df.iloc[[idx]] #.iloc[[0]]
@@ -1008,7 +1023,6 @@ def batch_summary_stats(csv_path_list: List[str],
 
     dist_summary = pd.concat([dist_org_summary, dist_center_summary], axis=0).set_index(group_by).sort_index()
 
-
     ###################
     # add normalization
     ###################
@@ -1023,23 +1037,24 @@ def batch_summary_stats(csv_path_list: List[str],
     # TODO: add in line to reorder the level=0 columns here
 
     # contact sites volume normalized
-    # norm_toA_list = []
-    # norm_toB_list = []
-    # for col in contact_summary.index:
-    #     norm_toA_list.append(contact_summary.loc[col][('volume', 'sum')]/org_summary.loc[col[:-1]+(col[-1].split('X')[0],)][('volume', 'sum')])
-    #     norm_toB_list.append(contact_summary.loc[col][('volume', 'sum')]/org_summary.loc[col[:-1]+(col[-1].split('X')[1],)][('volume', 'sum')])
-    # contact_summary[('volume', 'norm_to_A')] = norm_toA_list
-    # contact_summary[('volume', 'norm_to_B')] = norm_toB_list
+    if contact_tabs:
+        norm_toA_list = []
+        norm_toB_list = []
+        for col in contact_summary.index:
+            norm_toA_list.append(contact_summary.loc[col][('volume', 'sum')]/org_summary.loc[col[:-1]+(col[-1].split('X')[0],)][('volume', 'sum')])
+            norm_toB_list.append(contact_summary.loc[col][('volume', 'sum')]/org_summary.loc[col[:-1]+(col[-1].split('X')[1],)][('volume', 'sum')])
+        contact_summary[('volume', 'norm_to_A')] = norm_toA_list
+        contact_summary[('volume', 'norm_to_B')] = norm_toB_list
 
-    # number and area of individuals organelle involved in contact
-    # cont_cnt = org_df[group_by]
-    # cont_cnt[[col.split('_')[0] for col in org_df.columns if col.endswith(("_count"))]] = org_df[[col for col in org_df.columns if col.endswith(("_count"))]].astype(bool)
-    # cont_cnt_perorg = cont_cnt.groupby(group_by).agg('sum')
-    # cont_cnt_perorg.columns = pd.MultiIndex.from_product([cont_cnt_perorg.columns, ['count_in']])
-    # for col in cont_cnt_perorg.columns:
-    #     cont_cnt_perorg[(col[0], 'num_fraction_in')] = cont_cnt_perorg[col].values/org_summary[('volume', 'count')].values
-    # cont_cnt_perorg.sort_index(axis=1, inplace=True)
-    # org_summary = pd.merge(org_summary, cont_cnt_perorg, on=group_by, how='outer')
+        # number and area of individuals organelle involved in contact
+        cont_cnt = org_df[group_by]
+        cont_cnt[[col.split('_')[0] for col in org_df.columns if col.endswith(("_count"))]] = org_df[[col for col in org_df.columns if col.endswith(("_count"))]].astype(bool)
+        cont_cnt_perorg = cont_cnt.groupby(group_by).agg('sum')
+        cont_cnt_perorg.columns = pd.MultiIndex.from_product([cont_cnt_perorg.columns, ['count_in']])
+        for col in cont_cnt_perorg.columns:
+            cont_cnt_perorg[(col[0], 'num_fraction_in')] = cont_cnt_perorg[col].values/org_summary[('volume', 'count')].values
+        cont_cnt_perorg.sort_index(axis=1, inplace=True)
+        org_summary = pd.merge(org_summary, cont_cnt_perorg, on=group_by, how='outer')
 
 
     ###################
@@ -1052,43 +1067,46 @@ def batch_summary_stats(csv_path_list: List[str],
         if col[1] in ('count_in', 'num_fraction_in') or col[0].endswith(('_count', '_volume')):
             if col[2] not in col[0]:
                 org_final.drop(col,axis=1, inplace=True)
-    # new_col_order = ['dataset', 'image_name', 'object', 'volume', 'surface_area', 'SA_to_volume_ratio', 
-    #              'equivalent_diameter', 'extent', 'euler_number', 'solidity', 'axis_major_length', 
-    #              'ERXLD', 'ERXLD_count', 'ERXLD_volume', 'golgiXER', 'golgiXER_count', 'golgiXER_volume', 
-    #              'golgiXLD', 'golgiXLD_count', 'golgiXLD_volume', 'golgiXperox', 'golgiXperox_count', 'golgiXperox_volume', 
-    #              'lysoXER', 'lysoXER_count', 'lysoXER_volume', 'lysoXLD', 'lysoXLD_count', 'lysoXLD_volume', 
-    #              'lysoXgolgi', 'lysoXgolgi_count', 'lysoXgolgi_volume', 'lysoXmito', 'lysoXmito_count', 'lysoXmito_volume', 
-    #              'lysoXperox', 'lysoXperox_count', 'lysoXperox_volume', 'mitoXER', 'mitoXER_count', 'mitoXER_volume', 
-    #              'mitoXLD', 'mitoXLD_count', 'mitoXLD_volume', 'mitoXgolgi', 'mitoXgolgi_count', 'mitoXgolgi_volume', 
-    #              'mitoXperox', 'mitoXperox_count', 'mitoXperox_volume', 'peroxXER', 'peroxXER_count', 'peroxXER_volume', 
-    #              'peroxXLD', 'peroxXLD_count', 'peroxXLD_volume']
-    # new_cols = org_final.columns.reindex(new_col_order, level=0)
-    # org_final = org_final.reindex(columns=new_cols[0])
+    if contact_tabs:
+        new_col_order = ['dataset', 'image_name', 'object', 'volume', 'surface_area', 'SA_to_volume_ratio', 
+                    'equivalent_diameter', 'extent', 'euler_number', 'solidity', 'axis_major_length', 
+                    'ERXLD', 'ERXLD_count', 'ERXLD_volume', 'golgiXER', 'golgiXER_count', 'golgiXER_volume', 
+                    'golgiXLD', 'golgiXLD_count', 'golgiXLD_volume', 'golgiXperox', 'golgiXperox_count', 'golgiXperox_volume', 
+                    'lysoXER', 'lysoXER_count', 'lysoXER_volume', 'lysoXLD', 'lysoXLD_count', 'lysoXLD_volume', 
+                    'lysoXgolgi', 'lysoXgolgi_count', 'lysoXgolgi_volume', 'lysoXmito', 'lysoXmito_count', 'lysoXmito_volume', 
+                    'lysoXperox', 'lysoXperox_count', 'lysoXperox_volume', 'mitoXER', 'mitoXER_count', 'mitoXER_volume', 
+                    'mitoXLD', 'mitoXLD_count', 'mitoXLD_volume', 'mitoXgolgi', 'mitoXgolgi_count', 'mitoXgolgi_volume', 
+                    'mitoXperox', 'mitoXperox_count', 'mitoXperox_volume', 'peroxXER', 'peroxXER_count', 'peroxXER_volume', 
+                    'peroxXLD', 'peroxXLD_count', 'peroxXLD_volume']
+        new_cols = org_final.columns.reindex(new_col_order, level=0)
+        org_final = org_final.reindex(columns=new_cols[0])
     org_final.columns = ["_".join((col_name[-1], col_name[1], col_name[0])) for col_name in org_final.columns.to_flat_index()]
 
     #renaming, filling "NaN" with 0 when needed, and removing ER_std columns
     for col in org_final.columns:
-        # if '_count_in_' or '_fraction_in_' in col:
-        #     org_final[col] = org_final[col].fillna(0)
-        # if col.endswith(("_count_volume","_sum_volume", "_mean_volume", "_median_volume")):
-        #     org_final[col] = org_final[col].fillna(0)
-        # if col.endswith("_count_volume"):
-        #     org_final.rename(columns={col:col.split("_")[0]+"_count"}, inplace=True)
+        if contact_tabs:
+            if '_count_in_' or '_fraction_in_' in col:
+                org_final[col] = org_final[col].fillna(0)
+            if col.endswith(("_count_volume","_sum_volume", "_mean_volume", "_median_volume")):
+                org_final[col] = org_final[col].fillna(0)
+            if col.endswith("_count_volume"):
+                org_final.rename(columns={col:col.split("_")[0]+"_count"}, inplace=True)
         if col.startswith("ER_std_"):
             org_final.drop(columns=[col], inplace=True)
     org_final = org_final.reset_index()
 
     # contacts flattened
-    # contact_final = contact_summary.unstack(-1)
-    # contact_final.columns = ["_".join((col_name[-1], col_name[1], col_name[0])) for col_name in contact_final.columns.to_flat_index()]
+    if contact_tabs:
+        contact_final = contact_summary.unstack(-1)
+        contact_final.columns = ["_".join((col_name[-1], col_name[1], col_name[0])) for col_name in contact_final.columns.to_flat_index()]
 
-    # #renaming and filling "NaN" with 0 when needed
-    # for col in contact_final.columns:
-    #     if col.endswith(("_count_volume","_sum_volume", "_mean_volume", "_median_volume")):
-    #         contact_final[col] = contact_final[col].fillna(0)
-    #     if col.endswith("_count_volume"):
-    #         contact_final.rename(columns={col:col.split("_")[0]+"_count"}, inplace=True)
-    # contact_final = contact_final.reset_index()
+        #renaming and filling "NaN" with 0 when needed
+        for col in contact_final.columns:
+            if col.endswith(("_count_volume","_sum_volume", "_mean_volume", "_median_volume")):
+                contact_final[col] = contact_final[col].fillna(0)
+            if col.endswith("_count_volume"):
+                contact_final.rename(columns={col:col.split("_")[0]+"_count"}, inplace=True)
+        contact_final = contact_final.reset_index()
 
     # distributions flattened
     dist_final = dist_summary.unstack(-1)
@@ -1102,16 +1120,20 @@ def batch_summary_stats(csv_path_list: List[str],
     regions_final = regions_final.reset_index()
 
     # combining them all
-    # combined = pd.merge(org_final, contact_final, on=["dataset", "image_name"], how="outer")
-    combined = pd.merge(org_final, dist_final, on=["dataset", "image_name", "cell"], how="outer")
-    combined = pd.merge(combined, regions_final, on=["dataset", "image_name", "cell"], how="outer").set_index(["dataset", "image_name", "cell"])
+    if contact_tabs:
+        combined = pd.merge(org_final, contact_final, on=["dataset", "image_name", "cell"], how="outer")
+        combined = pd.merge(combined, dist_final, on=["dataset", "image_name", "cell"], how="outer")
+        combined = pd.merge(combined, regions_final, on=["dataset", "image_name", "cell"], how="outer").set_index(["dataset", "image_name", "cell"])
+    else:
+        combined = pd.merge(org_final, dist_final, on=["dataset", "image_name", "cell"], how="outer")
+        combined = pd.merge(combined, regions_final, on=["dataset", "image_name", "cell"], how="outer").set_index(["dataset", "image_name", "cell"])
     combined.columns = [col.replace('sum', 'total') for col in combined.columns]
 
     ###################
     # export summary sheets
     ###################
     org_summary.to_csv(out_path + f"/{out_preffix}per_org_summarystats.csv")
-    # contact_summary.to_csv(out_path + f"/{out_preffix}per_contact_summarystats.csv")
+    if contact_tabs: contact_summary.to_csv(out_path + f"/{out_preffix}per_contact_summarystats.csv")
     dist_summary.to_csv(out_path + f"/{out_preffix}distribution_summarystats.csv")
     regions_summary.to_csv(out_path + f"/{out_preffix}per_region_summarystats.csv")
     combined.to_csv(out_path + f"/{out_preffix}summarystats_combined.csv")
